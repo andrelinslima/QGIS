@@ -67,7 +67,7 @@ QgsPgNewConnection::QgsPgNewConnection( QWidget *parent, const QString &connName
     QString port = settings.value( key + "/port" ).toString();
     if ( port.length() == 0 )
     {
-      port = QStringLiteral( "5432" );
+      port = QStringLiteral( "35432" );
     }
     txtPort->setText( port );
     txtDatabase->setText( settings.value( key + "/database" ).toString() );

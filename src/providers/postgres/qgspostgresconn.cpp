@@ -550,7 +550,7 @@ bool QgsPostgresConn::getTableInfo( bool searchGeometryColumnsOnly, bool searchP
 
     // The following query returns only tables that exist and the user has SELECT privilege on.
     // Can't use regclass here because table must exist, else error occurs.
-    sql = QString( "SELECT %1,%2,%3,%4,%5,%6,c.relkind,obj_description(c.oid),"
+    sql = QString( "SELECT %1,%2,%3,%4,%5,%6,c.relkind,'' DESCRIPTION, " //obj_description(c.oid),"
                    "%10, "
                    "count(CASE WHEN t.typname IN (%9) THEN 1 ELSE NULL END) "
                    ", %8 "
@@ -562,13 +562,13 @@ bool QgsPostgresConn::getTableInfo( bool searchGeometryColumnsOnly, bool searchP
                    " AND a.atttypid=t.oid"
                    " AND a.attnum>0"
                    " AND n.oid=c.relnamespace"
-                   " AND has_schema_privilege(n.nspname,'usage')"
-                   " AND has_table_privilege(c.oid,'select')" // user has select privilege
+//                   " AND has_schema_privilege(n.nspname,'usage')"
+//                   " AND has_table_privilege(c.oid,'select')" // user has select privilege
                  )
           .arg( tableName, schemaName, columnName, typeName, sridName, dimName, gtableName )
           .arg( 1 )
           .arg( supportedSpatialTypes().join( ',' ) )
-          .arg( mPostgresqlVersion >= 90000 ? "array_agg(a.attname ORDER BY a.attnum)" : "(SELECT array_agg(attname) FROM (SELECT unnest(array_agg(a.attname)) AS attname ORDER BY unnest(array_agg(a.attnum))) AS attname)" )
+          .arg(  "array_agg(a.attname ORDER BY a.attnum)" )
           ;
 
     if ( searchPublicOnly )
@@ -695,15 +695,15 @@ bool QgsPostgresConn::getTableInfo( bool searchGeometryColumnsOnly, bool searchP
                                   ",a.attname"
                                   ",c.relkind"
                                   ",CASE WHEN t.typname IN (%1) THEN t.typname ELSE b.typname END AS coltype"
-                                  ",obj_description(c.oid)"
+                                  ",'' DESCRIPTION " //obj_description(c.oid)"
                                   " FROM pg_attribute a"
                                   " JOIN pg_class c ON c.oid=a.attrelid"
                                   " JOIN pg_namespace n ON n.oid=c.relnamespace"
                                   " JOIN pg_type t ON t.oid=a.atttypid"
                                   " LEFT JOIN pg_type b ON b.oid=t.typbasetype"
                                   " WHERE c.relkind IN ('v','r','m','p','f')"
-                                  " AND has_schema_privilege( n.nspname, 'usage' )"
-                                  " AND has_table_privilege( c.oid, 'select' )"
+//                                  " AND has_schema_privilege( n.nspname, 'usage' )"
+//                                  " AND has_table_privilege( c.oid, 'select' )"
                                   " AND (t.typname IN (%1) OR b.typname IN (%1))" )
                   .arg( supportedSpatialTypes().join( ',' ) );
 
@@ -825,20 +825,20 @@ bool QgsPostgresConn::getTableInfo( bool searchGeometryColumnsOnly, bool searchP
                                   "pg_class.relname"
                                   ",pg_namespace.nspname"
                                   ",pg_class.relkind"
-                                  ",obj_description(pg_class.oid)"
+                                  ",'' DESCRIPTION " //obj_description(pg_class.oid)"
                                   ",%1"
                                   " FROM "
                                   " pg_class"
                                   ",pg_namespace"
                                   ",pg_attribute a"
                                   " WHERE pg_namespace.oid=pg_class.relnamespace"
-                                  " AND has_schema_privilege(pg_namespace.nspname,'usage')"
-                                  " AND has_table_privilege(pg_class.oid,'select')"
+//                                  " AND has_schema_privilege(pg_namespace.nspname,'usage')"
+//                                  " AND has_table_privilege(pg_class.oid,'select')"
                                   " AND pg_class.relkind IN ('v','r','m','p','f')"
                                   " AND pg_class.oid = a.attrelid"
                                   " AND NOT a.attisdropped"
                                   " AND a.attnum > 0" )
-                  .arg( mPostgresqlVersion >= 90000 ? "array_agg(a.attname ORDER BY a.attnum)" : "(SELECT array_agg(attname) FROM (SELECT unnest(array_agg(a.attname)) AS attname ORDER BY unnest(array_agg(a.attnum))) AS attname)" );
+                  .arg( "array_agg(a.attname ORDER BY a.attnum)" );
 
     // user has select privilege
     if ( searchPublicOnly )
@@ -847,7 +847,7 @@ bool QgsPostgresConn::getTableInfo( bool searchGeometryColumnsOnly, bool searchP
     if ( !schema.isEmpty() )
       sql += QStringLiteral( " AND pg_namespace.nspname='%2'" ).arg( schema );
 
-    sql += QStringLiteral( " GROUP BY 1,2,3,4" );
+    sql += QStringLiteral( " GROUP BY pg_class.relname, pg_namespace.nspname, pg_class.relkind" );
 
     QgsDebugMsgLevel( "getting non-spatial table info: " + sql, 2 );
 
@@ -916,6 +916,8 @@ bool QgsPostgresConn::getTableInfo( bool searchGeometryColumnsOnly, bool searchP
     }
   }
 
+  PQexec( "select teiid_session_set('project', 'OWEARTH.NORWAY')");
+
   if ( nColumns == 0 && schema.isEmpty() )
   {
     QgsMessageLog::logMessage( tr( "Database connection was successful, but the accessible tables could not be determined." ), tr( "PostGIS" ) );
@@ -945,7 +947,7 @@ bool QgsPostgresConn::getSchemas( QList<QgsPostgresSchemaProperty> &schemas )
   schemas.clear();
   QgsPostgresResult result;
 
-  QString sql = QStringLiteral( "SELECT nspname, pg_get_userbyid(nspowner), pg_catalog.obj_description(oid) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname != 'information_schema' ORDER BY nspname" );
+  QString sql = QStringLiteral( "SELECT nspname, user(false), null FROM pg_namespace WHERE nspname not like 'pg_%' AND nspname != 'information_schema' ORDER BY nspname" );
 
   result = PQexec( sql, true );
   if ( result.PQresultStatus() != PGRES_TUPLES_OK )
@@ -1645,13 +1647,13 @@ void QgsPostgresConn::deduceEndian()
   // version 7.4, binary cursors return data in XDR whereas previous versions
   // return data in the endian of the server
 
-  QgsPostgresResult res( PQexec( QStringLiteral( "select regclass('pg_class')::oid" ) ) );
+  QgsPostgresResult res( PQexec( QStringLiteral( "select regclass('pg_class')" ) ) );
   QString oidValue = res.PQgetvalue( 0, 0 );
 
   QgsDebugMsgLevel( QStringLiteral( "Creating binary cursor" ), 2 );
 
   // get the same value using a binary cursor
-  openCursor( QStringLiteral( "oidcursor" ), QStringLiteral( "select regclass('pg_class')::oid" ) );
+  openCursor( QStringLiteral( "oidcursor" ), QStringLiteral( "select regclass('pg_class')" ) );
 
   QgsDebugMsgLevel( QStringLiteral( "Fetching a record and attempting to get check endian-ness" ), 2 );
 
@@ -1717,7 +1719,7 @@ void QgsPostgresConn::retrieveLayerTypes( QVector<QgsPostgresLayerProperty *> &l
       // SRID is already known
       if ( srid != std::numeric_limits<int>::min() )
       {
-        sql += QStringLiteral( "SELECT %1, array_agg( '%2:RASTER'::text )" )
+        sql += QStringLiteral( "SELECT %1, array_agg( '%2:RASTER' )" )
                .arg( i - 1 )
                .arg( srid );
       }
@@ -2233,7 +2235,7 @@ QgsDataSourceUri QgsPostgresConn::connUri( const QString &connName )
   QString port = settings.value( key + "/port" ).toString();
   if ( port.length() == 0 )
   {
-    port = QStringLiteral( "5432" );
+    port = QStringLiteral( "35432" );
   }
   QString database = settings.value( key + "/database" ).toString();
 

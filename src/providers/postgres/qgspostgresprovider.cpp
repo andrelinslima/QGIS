@@ -1363,11 +1363,11 @@ bool QgsPostgresProvider::hasSufficientPermsAndCapabilities()
 
       sql = QString( "SELECT 1 FROM pg_class,pg_namespace WHERE "
                      "pg_class.relnamespace=pg_namespace.oid AND "
-                     "%3 AND "
+//                     "%3 AND "
                      "relname=%1 AND nspname=%2" )
             .arg( quotedValue( mTableName ),
-                  quotedValue( mSchemaName ),
-                  connectionRO()->pgVersion() < 80100 ? "pg_get_userbyid(relowner)=current_user" : "pg_has_role(relowner,'MEMBER')" );
+                  quotedValue( mSchemaName ));
+//                  connectionRO()->pgVersion() < 80100 ? "pg_get_userbyid(relowner)=current_user" : "pg_has_role(relowner,'MEMBER')" );
       testAccess = connectionRO()->PQexec( sql );
       if ( testAccess.PQresultStatus() == PGRES_TUPLES_OK && testAccess.PQntuples() == 1 )
       {
@@ -1455,12 +1455,12 @@ bool QgsPostgresProvider::determinePrimaryKey()
   QString sql;
   if ( !mIsQuery )
   {
-    sql = QStringLiteral( "SELECT count(*) FROM pg_inherits WHERE inhparent=%1::regclass" ).arg( quotedValue( mQuery ) );
+    sql = QStringLiteral( "SELECT count(*) FROM pg_inherits WHERE inhparent=%1" ).arg( quotedValue( mQuery ) );
     QgsDebugMsgLevel( QStringLiteral( "Checking whether %1 is a parent table" ).arg( sql ), 2 );
     QgsPostgresResult res( connectionRO()->PQexec( sql ) );
     bool isParentTable( res.PQntuples() == 0 || res.PQgetvalue( 0, 0 ).toInt() > 0 );
 
-    sql = QStringLiteral( "SELECT indexrelid FROM pg_index WHERE indrelid=%1::regclass AND (indisprimary OR indisunique) ORDER BY CASE WHEN indisprimary THEN 1 ELSE 2 END LIMIT 1" ).arg( quotedValue( mQuery ) );
+    sql = QStringLiteral( "SELECT indexrelid FROM pg_index WHERE indrelid=%1 AND (indisprimary OR indisunique) ORDER BY CASE WHEN indisprimary THEN 1 ELSE 2 END LIMIT 1" ).arg( quotedValue( mQuery ) );
     QgsDebugMsgLevel( QStringLiteral( "Retrieving first primary or unique index: %1" ).arg( sql ), 2 );
 
     res = connectionRO()->PQexec( sql );
@@ -1915,6 +1915,7 @@ void QgsPostgresProvider::enumValues( int index, QStringList &enumList ) const
 bool QgsPostgresProvider::parseEnumRange( QStringList &enumValues, const QString &attributeName ) const
 {
   enumValues.clear();
+  return false; //DSIS doesn't support enum types
 
   QString enumRangeSql = QStringLiteral( "SELECT enumlabel FROM pg_catalog.pg_enum WHERE enumtypid=(SELECT atttypid::regclass FROM pg_attribute WHERE attrelid=%1::regclass AND attname=%2)" )
                          .arg( quotedValue( mQuery ),

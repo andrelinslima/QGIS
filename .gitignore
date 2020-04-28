@@ -77,3 +77,6 @@ python/plugins/processing/tests/testdata/custom/*.aux.xml
 python/plugins/processing/tests/testdata/*.aux.xml
 Thumb.db
 Testing/*
+**/auto_generated
+*.cmake
+*.sip
